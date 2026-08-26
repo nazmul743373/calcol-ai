@@ -1,0 +1,6 @@
+streamlit==1.62.0
+folium==0.20.0
+requests==2.34.2
+geopy==2.5.0
+google-genai==2.19.0
+streamlit-geolocation==0.0.10
