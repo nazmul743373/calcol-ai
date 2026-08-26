@@ -348,13 +348,19 @@ def get_real_nearest_hospital(lat, lon):
     return None
 
 def get_real_road_route(lat1, lon1, lat2, lon2):
-    url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
+    url = f"https://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
     try:
         res = requests.get(url, headers={'User-Agent': 'ArogyaMitra/1.0'}, timeout=10)
         if res.json().get("code") == "Ok":
             return [(coord[1], coord[0]) for coord in res.json()["routes"][0]["geometry"]["coordinates"]]
     except: pass
     return [(lat1, lon1), (lat2, lon2)]
+
+def get_directions_url(destination_lat, destination_lon):
+    return (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&destination={destination_lat},{destination_lon}&travelmode=driving"
+    )
 
 # =========================================================
 # 5. FLOATING GPS BUTTON AND CHAT ENGINE
@@ -374,7 +380,8 @@ if location and location.get("latitude"):
             folium.Marker([hosp_lat, hosp_lon], popup=hosp_name, icon=folium.Icon(color="red", icon="plus-square", prefix="fa")).add_to(m)
             folium.PolyLine(get_real_road_route(user_lat, user_lon, hosp_lat, hosp_lon), color="#EF4444", weight=5).add_to(m)
             m.fit_bounds([[user_lat, user_lon], [hosp_lat, hosp_lon]])
-            reply_text = t["route_found"].format(hosp_name=hosp_name)
+            directions_url = get_directions_url(hosp_lat, hosp_lon)
+            reply_text = t["route_found"].format(hosp_name=hosp_name) + f"\n\n[Open navigation](<{directions_url}>)"
         else:
             reply_text = t["no_hosp"]
         map_html = m._repr_html_()
@@ -420,7 +427,8 @@ if prompt:
                             folium.Marker([hosp_lat, hosp_lon], popup=hosp_name, icon=folium.Icon(color="red", icon="plus-square", prefix="fa")).add_to(m)
                             folium.PolyLine(get_real_road_route(user_lat, user_lon, hosp_lat, hosp_lon), color="#EF4444", weight=5).add_to(m)
                             m.fit_bounds([[user_lat, user_lon], [hosp_lat, hosp_lon]])
-                            reply_text = t["route_found"].format(hosp_name=hosp_name)
+                            directions_url = get_directions_url(hosp_lat, hosp_lon)
+                            reply_text = t["route_found"].format(hosp_name=hosp_name) + f"\n\n[Open navigation](<{directions_url}>)"
                         else:
                             reply_text = t["no_hosp"]
                         map_html = m._repr_html_()
