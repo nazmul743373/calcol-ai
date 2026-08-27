@@ -1,16 +1,23 @@
 import os
 import time
+import json
 from gtts import gTTS
 import pygame
 from geopy.geocoders import Nominatim
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 # ==========================================
-# 1. SETUP GEMINI API KEY
+# 1. SETUP OPENROUTER API KEY
 # ==========================================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+
+ai_client = (
+    OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
+    if OPENROUTER_API_KEY
+    else None
+)
+
+MODEL_NAME = "openrouter/free"
 
 # ==========================================
 # 2. FREE TEXT-TO-SPEECH (gTTS + Pygame)
@@ -20,9 +27,7 @@ pygame.mixer.init()
 def speak_text(text: str, lang_code: str = "en"):
     """Converts text to speech and plays it aloud through laptop speakers."""
     try:
-        # Clean text so TTS doesn't pronounce asterisks or markdown
         clean_text = text.replace("*", "").replace("#", "").strip()
-        
         tts = gTTS(text=clean_text, lang=lang_code, slow=False)
         filename = "temp_voice.mp3"
         tts.save(filename)
@@ -38,7 +43,7 @@ def speak_text(text: str, lang_code: str = "en"):
         print(f"🔊 Audio playback error: {e}")
 
 # ==========================================
-# 3. FREE HOSPITAL / CLINIC FINDER (No Maps Key Needed)
+# 3. FREE HOSPITAL / CLINIC FINDER
 # ==========================================
 def find_nearest_hospital(city_or_area: str, facility_type: str = "hospital") -> str:
     """Finds hospitals or clinics near the specified area in India using OpenStreetMap."""
@@ -49,7 +54,6 @@ def find_nearest_hospital(city_or_area: str, facility_type: str = "hospital") ->
         if not location:
             return f"Could not find geographic coordinates for {city_or_area}."
         
-        # Search for nearby healthcare facilities
         query = f"{facility_type} in {city_or_area}, India"
         places = geolocator.geocode(query, exactly_one=False, limit=3, timeout=10)
         
@@ -57,9 +61,33 @@ def find_nearest_hospital(city_or_area: str, facility_type: str = "hospital") ->
             results = [f"• {p.address.split(',')[0]} ({p.address})" for p in places]
             return f"Found {facility_type}s in/near {city_or_area}:\n" + "\n".join(results)
         else:
-            return f"Located {city_or_area} at Lat: {location.latitude:.2f}, Lng: {location.longitude:.2f}. For emergencies, please call 108/112 or visit the nearest Primary Health Center (PHC)."
+            return f"Located {city_or_area} at Lat: {location.latitude:.2f}, Lng: {location.longitude:.2f}. For emergencies, call 108/112."
     except Exception as e:
         return f"Location search error: {str(e)}"
+
+tools_schema = [
+    {
+        "type": "function",
+        "function": {
+            "name": "find_nearest_hospital",
+            "description": "Finds hospitals or clinics near the specified area in India using OpenStreetMap.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city_or_area": {
+                        "type": "string",
+                        "description": "The city, town, or specific area name in India."
+                    },
+                    "facility_type": {
+                        "type": "string",
+                        "description": "Type of facility, e.g., 'hospital', 'clinic'."
+                    }
+                },
+                "required": ["city_or_area"]
+            }
+        }
+    }
+]
 
 # ==========================================
 # 4. LANGUAGE CONFIGURATION
@@ -74,11 +102,11 @@ LANGUAGES = {
 }
 
 # ==========================================
-# 5. RUN CHATBOT
+# 5. RUN CHATBOT WITH TRANSLATION & AUDIO CONTROL
 # ==========================================
 def run_arogyamitra():
     print("=" * 60)
-    print("🏥 AROGYAMITRA AI — LAPTOP TEST ENVIRONMENT")
+    print("🏥 AROGYAMITRA AI — LAPTOP TEST ENVIRONMENT (OPENROUTER)")
     print("   Connecting Care, Anywhere (SIH Prototype)")
     print("=" * 60)
     
@@ -88,31 +116,18 @@ def run_arogyamitra():
     
     choice = input("\nEnter choice (1-6) [default: 1]: ").strip()
     selected_lang = LANGUAGES.get(choice, LANGUAGES["1"])
+    current_lang_name = selected_lang['name']
+    current_lang_code = selected_lang['code']
     
-    print(f"\n✅ Active Language: {selected_lang['name']}")
+    print(f"\n✅ Active Language: {current_lang_name}")
+    print("💡 Tip: Type 'translate to Hindi' (or Bengali, Tamil, etc.) anytime to switch languages!")
+    print("💡 Tip: Type 's' to repeat the last spoken response.")
     
-    # Configure Gemini System Instructions
-    system_instruction = f"""
-    You are ArogyaMitra AI, an intelligent digital healthcare assistant for India.
-    CRITICAL RULES:
-    1. Reply entirely in {selected_lang['name']}.
-    2. If the user asks for a hospital, clinic, or pharmacy in an area, call the `find_nearest_hospital` tool.
-    3. For symptoms or medication advice, provide clear, simple guidance and always end with: 
-       "Disclaimer: I am an AI assistant. Please consult a qualified doctor for medical diagnoses."
-    4. Keep answers concise so they sound natural when spoken aloud.
-    """
+    messages = []
+    last_response_text = selected_lang['greeting']
     
-    config = types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        temperature=0.3,
-        tools=[find_nearest_hospital]
-    )
-    
-    chat = ai_client.chats.create(model="gemini-3.5-flash", config=config)
-    
-    # Speak and print greeting
     print(f"\n🤖 ArogyaMitra: {selected_lang['greeting']}")
-    speak_text(selected_lang['greeting'], selected_lang['code'])
+    speak_text(selected_lang['greeting'], current_lang_code)
     
     while True:
         try:
@@ -121,13 +136,78 @@ def run_arogyamitra():
                 continue
             if user_input.lower() in ["exit", "quit", "bye"]:
                 print("\n🤖 ArogyaMitra: Take care of your health! Goodbye.")
+                speak_text("Take care of your health! Goodbye.", "en")
                 break
+            
+            if user_input.lower() == 's':
+                print(f"\n🔊 Repeating last message...")
+                speak_text(last_response_text, current_lang_code)
+                continue
                 
-            response = chat.send_message(user_input)
+            messages.append({"role": "user", "content": user_input})
             
-            print(f"\n🤖 ArogyaMitra: {response.text}")
-            speak_text(response.text, selected_lang['code'])
+            system_instruction = f"""
+            You are ArogyaMitra AI, an intelligent digital healthcare assistant for India.
+            Current primary language preference: {current_lang_name}.
+            CRITICAL RULES:
+            1. If the user explicitly asks to translate text or change language, fulfill the translation request immediately. Otherwise, reply primarily in {current_lang_name}.
+            2. If the user asks for a hospital, clinic, or pharmacy in an area, trigger the `find_nearest_hospital` tool.
+            3. For symptoms or medication advice, provide clear guidance and always end with: 
+               "Disclaimer: I am an AI assistant. Please consult a qualified doctor for medical diagnoses."
+            4. Keep answers concise so they sound natural when spoken aloud.
+            """
             
+            full_payload = [{"role": "system", "content": system_instruction}] + messages
+            
+            response = ai_client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=full_payload,
+                tools=tools_schema,
+                temperature=0.3
+            )
+            
+            response_message = response.choices[0].message
+            messages.append(response_message)
+            
+            if response_message.tool_calls:
+                for tool_call in response_message.tool_calls:
+                    if tool_call.function.name == "find_nearest_hospital":
+                        args = json.loads(tool_call.function.arguments)
+                        print(f"   [🔍 Searching map for: {args.get('city_or_area')}...]")
+                        
+                        tool_result = find_nearest_hospital(
+                            city_or_area=args.get("city_or_area"),
+                            facility_type=args.get("facility_type", "hospital")
+                        )
+                        
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_call.function.name,
+                            "content": tool_result
+                        })
+                
+                final_response = ai_client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[{"role": "system", "content": system_instruction}] + messages,
+                    temperature=0.3
+                )
+                
+                final_text = final_response.choices[0].message.content
+                messages.append({"role": "assistant", "content": final_text})
+                last_response_text = final_text
+                
+                print(f"\n🤖 ArogyaMitra: {final_text}")
+                speak_text(final_text, current_lang_code)
+                
+            else:
+                final_text = response_message.content
+                last_response_text = final_text
+                print(f"\n🤖 ArogyaMitra: {final_text}")
+                speak_text(final_text, current_lang_code)
+            
+        except Exception as e:
+            print(f"\n⚠️ Error connecting to AI: {e}")
         except KeyboardInterrupt:
             break
 
