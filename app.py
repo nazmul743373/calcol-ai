@@ -407,7 +407,7 @@ api_mode = st.sidebar.radio(
     ["🟢 Auto (Calcol Server)", "🔑 Custom (Your Own Key)"]
 )
 
-HIDDEN_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+HIDDEN_API_KEY = os.getenv("OPENROUTER_API_KEY", "") or st.secrets.get("OPENROUTER_API_KEY", "")
 
 if api_mode == "🟢 Auto (Calcol Server)":
     st.sidebar.success("✅ Connected securely to Calcol Server.")
