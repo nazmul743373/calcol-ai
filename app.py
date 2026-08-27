@@ -1,5 +1,4 @@
 import math
-import os
 import json
 import folium
 import requests
@@ -143,7 +142,6 @@ if "language_selected" not in st.session_state:
 if "current_lang" not in st.session_state:
     st.session_state.current_lang = "English"
 
-# --- Startup Language Selection Screen ---
 if not st.session_state.language_selected:
     st.markdown("<h1 style='text-align: center;'>🏥 Calcol AI Companion</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center; color: gray;'>Please select your preferred language to begin / कृपया अपनी भाषा चुनें</h3>", unsafe_allow_html=True)
@@ -151,11 +149,7 @@ if not st.session_state.language_selected:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        selected_lang_input = st.radio(
-            "Select Language:",
-            ["English", "Hindi", "Bengali", "Tamil", "Telugu", "Marathi"],
-            label_visibility="collapsed"
-        )
+        selected_lang_input = st.radio("Select Language:", ["English", "Hindi", "Bengali", "Tamil", "Telugu", "Marathi"], label_visibility="collapsed")
         if st.button("🚀 Enter Calcol / प्रवेश करें", use_container_width=True):
             st.session_state.current_lang = selected_lang_input
             st.session_state.language_selected = True
@@ -208,7 +202,6 @@ function initPersistentWidgets() {{
     const chatInputBox = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
     if (!chatInputBox) return;
 
-    // --- 1. PERSISTENT MIC BUTTON ---
     if (!parentDoc.getElementById("mic-toggle-wrap") && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {{
         let micWrap = parentDoc.createElement("div");
         micWrap.id = "mic-toggle-wrap";
@@ -232,8 +225,8 @@ function initPersistentWidgets() {{
         let SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = new SpeechRecognition();
         recognition.lang = speechLangCode; 
-        recognition.interimResults = true; // Shows live words as you speak
-        recognition.continuous = true;     // Keeps listening instead of timing out after 5 seconds
+        recognition.interimResults = true; 
+        recognition.continuous = true;     
 
         let isListening = false;
 
@@ -241,7 +234,7 @@ function initPersistentWidgets() {{
             if (!isListening) {{
                 try {{
                     recognition.start();
-                    micBtn.style.background = "#ff4b4b"; // Red when active
+                    micBtn.style.background = "#ff4b4b"; 
                     isListening = true;
                 }} catch(e) {{}}
             }} else {{
@@ -268,7 +261,7 @@ function initPersistentWidgets() {{
 
         recognition.onend = () => {{
             if (isListening) {{
-                try {{ recognition.start(); }} catch(e) {{}} // Auto-restart if browser drops session
+                try {{ recognition.start(); }} catch(e) {{}} 
             }} else {{
                 micBtn.style.background = "#fff";
             }}
@@ -278,7 +271,6 @@ function initPersistentWidgets() {{
         parentDoc.body.appendChild(micWrap);
     }}
 
-    // --- 2. PERSISTENT VIRTUAL KEYBOARD ---
     if (layoutName !== "english" && !parentDoc.getElementById("vkb-container")) {{
         const kbContainer = parentDoc.createElement("div");
         kbContainer.id = "vkb-container";
@@ -407,7 +399,7 @@ api_mode = st.sidebar.radio(
     ["🟢 Auto (Calcol Server)", "🔑 Custom (Your Own Key)"]
 )
 
-HIDDEN_API_KEY = os.getenv("OPENROUTER_API_KEY", "") or st.secrets.get("OPENROUTER_API_KEY", "")
+HIDDEN_API_KEY = "put here "
 
 if api_mode == "🟢 Auto (Calcol Server)":
     st.sidebar.success("✅ Connected securely to Calcol Server.")
@@ -422,7 +414,7 @@ st.title(t["main_title"])
 st.caption(t["caption"])
 
 # =========================================================
-# 4. MAP & ROUTING HELPERS
+# 4. MAP & ROUTING HELPERS (WITH LINKS AND DISTANCE)
 # =========================================================
 def get_real_nearest_hospital(lat, lon):
     overpass_url = "http://overpass-api.de/api/interpreter"
@@ -460,23 +452,37 @@ def generate_unified_map_html(user_lat, user_lon, dict_t):
     nearest_hosp = get_real_nearest_hospital(user_lat, user_lon)
     if nearest_hosp:
         hosp_lat, hosp_lon, hosp_name = nearest_hosp
+        dist_km = geodesic((user_lat, user_lon), (hosp_lat, hosp_lon)).kilometers
+        dist_str = f"{dist_km:.1f} km"
     else:
         hosp_lat, hosp_lon = user_lat + 0.003, user_lon + 0.003
         hosp_name = "Local Medical Clinic"
+        dist_str = "~0.5 km"
         
     folium.Marker([hosp_lat, hosp_lon], popup=hosp_name, icon=folium.Icon(color="red", icon="plus-square", prefix="fa")).add_to(m)
     route_coords = get_real_road_route(user_lat, user_lon, hosp_lat, hosp_lon)
     folium.PolyLine(route_coords, color="#EF4444", weight=5).add_to(m)
     m.fit_bounds([[user_lat, user_lon], [hosp_lat, hosp_lon]])
     
+    google_maps_link = f"https://www.google.com/maps/dir/?api=1&origin={user_lat},{user_lon}&destination={hosp_lat},{hosp_lon}"
+    
     reply_text = dict_t["route_found"].format(hosp_name=hosp_name)
+    reply_text += f"\n\n📏 **Distance / দূরত্ব:** {dist_str}\n\n🔗 [**Open in Google Maps / গুগল ম্যাপে খুলুন**]({google_maps_link})"
+    
     return reply_text, m._repr_html_()
 
 # =========================================================
-# 5. TEXT-TO-SPEECH
+# 5. SAFE TEXT-TO-SPEECH (CRASH PROOF)
 # =========================================================
 def speak_response_js(text, lang_code, unique_key):
-    clean_text = text.replace("*", "").replace("#", "").strip()
+    if text is None:
+        text = ""
+        
+    clean_text = str(text).replace("*", "").replace("#", "").strip()
+    
+    if not clean_text:
+        return
+        
     safe_json_text = json.dumps(clean_text) 
     
     if st.button(t["read_btn"], key=f"speak_{unique_key}"):
@@ -522,7 +528,7 @@ for idx, msg in enumerate(st.session_state.messages):
             speak_response_js(msg["content"], active_voice_code, unique_key=idx)
 
 # =========================================================
-# 7. AI PROCESSING LOOP
+# 7. AI PROCESSING LOOP & FORCED MAP INTERCEPTOR
 # =========================================================
 prompt = st.chat_input(t["chat_input"])
 
@@ -540,29 +546,94 @@ if prompt:
             )
             MODEL_NAME = "openrouter/free"
 
-            is_map_query = any(k in prompt.lower() for k in ["map", "route", "hospital", "clinic", "nearest", "where", "location", "হাসপাতাল", "ডাক্তার", "अस्पताल"])
-            is_my_location = any(k in prompt.lower() for k in ["my address", "my location", "near me", "from me", "around me", "আমার কাছে", "मेरे पास"])
+            # 🔥 MASSIVELY EXPANDED KEYWORDS (English, Bengali, Hindi, Hinglish/Benglish)
+            map_keywords = [
+                "map", "route", "rout", "way", "hospital", "hosp", "clinic", "nearest", "where", "location", "distance",
+                "হাসপাতাল", "হসপিটাল", "রুট", "রাস্তা", "ম্যাপ", "কোথায়", "নিকটতম", "দূরত্ব", "দাও", "দেখান", "কাছাকাছি",
+                "अस्पताल", "क्लीनिक", "नजदीकी", "रास्ता", "मैप", "दिशा", "दूरी"
+            ]
+            is_map_query = any(k in prompt.lower() for k in map_keywords)
+            
+            my_loc_keywords = ["my address", "my location", "near me", "from me", "around me", "আমার কাছে", "আমার স্থান", "मेरे पास", "amake", "near"]
+            is_my_location = any(k in prompt.lower() for k in my_loc_keywords)
 
-            if is_map_query and is_my_location:
-                if not current_gps:
-                    reply_text = t["click_btn_prompt"]
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                    with st.chat_message("assistant"): 
-                        st.warning(reply_text)
-                    st.stop()
+            # --- MAP INTERCEPTOR ---
+            if is_map_query:
+                # 🗺️ CASE 1: Near GPS (Ensuring they aren't asking for a different village)
+                if is_my_location and ("harinbari" not in prompt.lower() and "sagar" not in prompt.lower()):
+                    if not current_gps:
+                        reply_text = t["click_btn_prompt"]
+                        st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                        with st.chat_message("assistant"): 
+                            st.warning(reply_text)
+                        st.stop()
+                    else:
+                        with st.spinner(t["spinner_map"]):
+                            reply_text, map_html = generate_unified_map_html(current_gps[0], current_gps[1], t)
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text, "map_html": map_html})
+                            with st.chat_message("assistant"):
+                                st.markdown(reply_text)
+                                components.html(map_html, height=400)
+                        st.stop()
+
+                # 🗺️ CASE 2: Specific place name (e.g., "Harinbari, Sagar") - FORCED INTERCEPT
                 else:
-                    with st.spinner(t["spinner_map"]):
-                        reply_text, map_html = generate_unified_map_html(current_gps[0], current_gps[1], t)
-                        st.session_state.messages.append({"role": "assistant", "content": reply_text, "map_html": map_html})
-                        with st.chat_message("assistant"):
-                            st.markdown(reply_text)
-                            components.html(map_html, height=400)
-                    st.stop()
+                    with st.spinner(t["spinner_chat"]):
+                        # Smart AI Extraction for Geocoding
+                        extraction_response = client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=[
+                                {"role": "system", "content": "You are a geocoding assistant. Extract ONLY the village, town, city, or area name from the user's query. Translate it to English. If it's a small place, append its district or 'West Bengal, India' (e.g., 'Harinbari, Sagar, West Bengal, India'). DO NOT output any other text, punctuation, or explanation."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.0
+                        )
+                        place_name = extraction_response.choices[0].message.content.strip()
+                        user_lat, user_lon = None, None
+                        
+                        geolocator = Nominatim(user_agent="calcol_sih_app")
+                        try:
+                            loc = geolocator.geocode(place_name, timeout=10)
+                            if loc:
+                                user_lat, user_lon = loc.latitude, loc.longitude
+                        except:
+                            pass
+                        
+                        if not user_lat or not user_lon:
+                            try:
+                                broad_place = place_name.split(',')[0] + ", India"
+                                loc = geolocator.geocode(broad_place, timeout=10)
+                                if loc:
+                                    user_lat, user_lon = loc.latitude, loc.longitude
+                            except:
+                                pass
 
+                        # 🗺️ Successful map generation
+                        if user_lat and user_lon:
+                            reply_text, map_html = generate_unified_map_html(user_lat, user_lon, t)
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text, "map_html": map_html})
+                            with st.chat_message("assistant"):
+                                st.markdown(reply_text)
+                                components.html(map_html, height=400)
+                            st.stop()
+                        
+                        # 🔗 Hard Fallback Google Maps Link (NEVER text essay)
+                        else:
+                            search_query = prompt.replace(" ", "+")
+                            gmap_link = f"https://www.google.com/maps/search/hospital+near+{place_name.replace(' ', '+')}"
+                            
+                            reply_text = f"📍 **মানচিত্র রেন্ডারিং / Map Generation**\n\nI couldn't pinpoint the exact GPS coordinates for '{place_name}' on the internal map, but you can view the live accurate route here:\n\n🔗 [**Click to open Google Maps for {place_name}**]({gmap_link})"
+                            
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                            with st.chat_message("assistant"):
+                                st.success(reply_text)
+                            st.stop()
+
+            # 💬 CASE 3: Normal Medical / General Text Chat
             system_instruction = f"""
             You are Calcol AI, an efficient digital healthcare assistant for India. 
             The user interface is set to {lang_choice}. 
-            CRITICAL INSTRUCTION: Detect the exact language and script of the user's input. You must respond fluently, accurately, and natively in that exact language (e.g., if they speak Bengali, reply in proper Bengali script; if Hindi, reply in Hindi script; if English, reply in English). 
+            CRITICAL INSTRUCTION: Detect the exact language and script of the user's input. You must respond fluently, accurately, and natively in that exact language (e.g., if they speak Bengali, reply in proper Bengali script; if Hindi, reply in Hindi script). 
             Provide clear home care guidance and mention OTC options if applicable. Always end with: 
             'Disclaimer: Calcol AI is not a doctor. Consult a physician for serious issues.' (Translate this disclaimer into the user's response language).
             Keep answers concise and structured.
@@ -579,6 +650,10 @@ if prompt:
             )
             
             reply = chat_response.choices[0].message.content
+            
+            if reply is None:
+                reply = "I'm sorry, I couldn't process that. Could you please repeat?"
+                
             st.session_state.messages.append({"role": "assistant", "content": reply})
             
             with st.chat_message("assistant"): 
